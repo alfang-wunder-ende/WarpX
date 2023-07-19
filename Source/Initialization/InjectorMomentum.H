@@ -29,6 +29,9 @@
 #include <cmath>
 #include <string>
 
+#include <iostream>
+#include <fstream>
+
 // struct whose getMomentum returns constant momentum.
 struct InjectorMomentumConstant
 {
@@ -280,6 +283,30 @@ struct InjectorMomentumBoltzmann
         u[dir] = 1._rt/std::sqrt(1._rt-beta*beta)*(u[dir]+gamma*beta);
         // Note that if beta = 0 then the flipping method and Lorentz transform
         // have no effect on the u[dir] direction.
+
+//	if(theta > 1.e-08){
+//		{std::ofstream outputFile("ux_electrons.txt", std::ios::app);
+//	outputFile << u[0] << std::endl;
+//	outputFile.close();}
+//		{std::ofstream outputFile("uy_electrons.txt", std::ios::app);
+//	outputFile << u[1] << std::endl;
+//	outputFile.close();}
+//		{std::ofstream outputFile("uz_electrons.txt", std::ios::app);
+//	outputFile << u[2] << std::endl;
+//	outputFile.close();}
+//	}
+//	else{	
+//		{std::ofstream outputFile("ux_ions.txt", std::ios::app);
+//	outputFile << u[0] << std::endl;
+//	outputFile.close();}
+//		{std::ofstream outputFile("uy_ions.txt", std::ios::app);
+//	outputFile << u[1] << std::endl;
+//	outputFile.close();}
+//		{std::ofstream outputFile("uz_ions.txt", std::ios::app);
+//	outputFile << u[2] << std::endl;
+//	outputFile.close();}
+//	}
+        //std::cout << theta << " " << u[0] << " " << u[1] << " " << u[2] << std::endl;
         return amrex::XDim3 {u[0],u[1],u[2]};
     }
 

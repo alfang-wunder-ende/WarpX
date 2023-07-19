@@ -15,7 +15,7 @@
 #include "Particles/Pusher/UpdatePosition.H"
 #include "Particles/WarpXParticleContainer.H"
 #include "Utils/WarpXAlgorithmSelection.H"
-
+#include <cmath>
 #include <AMReX_REAL.H>
 
 #include <limits>
@@ -65,7 +65,8 @@ void doParticlePush(const GetParticlePosition& GetPosition,
 #ifdef WARPX_QED
                     const amrex::Real t_chi_max,
 #endif
-                    const amrex::Real dt)
+                    const amrex::Real dt,
+                    const amrex::Real t)
 {
     amrex::ParticleReal qp = a_q;
     if (ion_lev) { qp *= ion_lev; }
@@ -105,9 +106,11 @@ void doParticlePush(const GetParticlePosition& GetPosition,
             SetPosition(i, x, y, z);
         }
     } else if (pusher_algo == ParticlePusherAlgo::Boris) {
-        UpdateMomentumBoris( ux, uy, uz,
+        if(int(std::ceil(((t + dt)/dt)))%2 == 0){
+	UpdateMomentumRuth( ux, uy, uz,
                              Ex, Ey, Ez, Bx,
                              By, Bz, qp, m, dt);
+	}
         amrex::ParticleReal x, y, z;
         GetPosition(i, x, y, z);
         UpdatePosition(x, y, z, ux, uy, uz, dt );

@@ -107,6 +107,7 @@
 #include <utility>
 #include <vector>
 #include <sstream>
+#include <iostream>
 
 using namespace amrex;
 
@@ -1941,7 +1942,7 @@ PhysicalParticleContainer::Evolve (int lev,
                                    MultiFab* rho, MultiFab* crho,
                                    const MultiFab* cEx, const MultiFab* cEy, const MultiFab* cEz,
                                    const MultiFab* cBx, const MultiFab* cBy, const MultiFab* cBz,
-                                   Real /*t*/, Real dt, DtType a_dt_type, bool skip_deposition)
+                                   Real t, Real dt, DtType a_dt_type, bool skip_deposition)
 {
 
     WARPX_PROFILE("PhysicalParticleContainer::Evolve()");
@@ -2072,7 +2073,7 @@ PhysicalParticleContainer::Evolve (int lev,
                 PushPX(pti, exfab, eyfab, ezfab,
                        bxfab, byfab, bzfab,
                        Ex.nGrowVect(), e_is_nodal,
-                       0, np_gather, lev, lev, dt, ScaleFields(false), a_dt_type);
+                       0, np_gather, lev, lev, t, dt, ScaleFields(false), a_dt_type);
 
                 if (np_gather < np)
                 {
@@ -2107,7 +2108,7 @@ PhysicalParticleContainer::Evolve (int lev,
                            cbxfab, cbyfab, cbzfab,
                            cEx->nGrowVect(), e_is_nodal,
                            nfine_gather, np-nfine_gather,
-                           lev, lev-1, dt, ScaleFields(false), a_dt_type);
+                           lev, lev-1, t, dt, ScaleFields(false), a_dt_type);
                 }
 
                 WARPX_PROFILE_VAR_STOP(blp_fg);
@@ -2463,6 +2464,7 @@ PhysicalParticleContainer::PushP (int lev, Real dt,
             box.grow(Ex.nGrowVect());
 
             const long np = pti.numParticles();
+	    std::cout << "++ num particles in pushP kernel: " << np << std::endl;
 
             // Data on the grid
             const FArrayBox& exfab = Ex[pti];
@@ -2523,7 +2525,7 @@ PhysicalParticleContainer::PushP (int lev, Real dt,
             enum exteb_flags : int { no_exteb, has_exteb };
 
             int exteb_runtime_flag = getExternalEB.isNoOp() ? no_exteb : has_exteb;
-
+            double tic = MPI_Wtime();
             amrex::ParallelFor(TypeList<CompileTimeOptions<no_exteb,has_exteb>>{},
                                {exteb_runtime_flag},
                                np, [=] AMREX_GPU_DEVICE (long ip, auto exteb_control)
@@ -2536,17 +2538,17 @@ PhysicalParticleContainer::PushP (int lev, Real dt,
 
                 if (!t_do_not_gather){
                     // first gather E and B to the particle positions
-                    doGatherShapeN(xp, yp, zp, Exp, Eyp, Ezp, Bxp, Byp, Bzp,
-                                   ex_arr, ey_arr, ez_arr, bx_arr, by_arr, bz_arr,
-                                   ex_type, ey_type, ez_type, bx_type, by_type, bz_type,
-                                   dx_arr, xyzmin_arr, lo, n_rz_azimuthal_modes,
-                                   nox, galerkin_interpolation);
+                   // doGatherShapeN(xp, yp, zp, Exp, Eyp, Ezp, Bxp, Byp, Bzp,
+                   //                ex_arr, ey_arr, ez_arr, bx_arr, by_arr, bz_arr,
+                   //                ex_type, ey_type, ez_type, bx_type, by_type, bz_type,
+                   //                dx_arr, xyzmin_arr, lo, n_rz_azimuthal_modes,
+                   //                nox, galerkin_interpolation);
                 }
 
                 // Externally applied E and B-field in Cartesian co-ordinates
                 [[maybe_unused]] auto& getExternalEB_tmp = getExternalEB;
                 if constexpr (exteb_control == has_exteb) {
-                    getExternalEB(ip, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
+                   // getExternalEB(ip, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
                 }
 
                 if (do_crr) {
@@ -2577,6 +2579,8 @@ PhysicalParticleContainer::PushP (int lev, Real dt,
                     amrex::Abort("Unknown particle pusher");
                 }
             });
+	    double toc = MPI_Wtime();
+	    std::cout << std::scientific << toc - tic << std::endl;
         }
     }
 }
@@ -2625,11 +2629,28 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
                                    int lev, int gather_lev,
                                    amrex::Real dt, ScaleFields scaleFields,
                                    DtType a_dt_type)
+{}
+
+void
+PhysicalParticleContainer::PushPX (WarpXParIter& pti,
+                                   amrex::FArrayBox const * exfab,
+                                   amrex::FArrayBox const * eyfab,
+                                   amrex::FArrayBox const * ezfab,
+                                   amrex::FArrayBox const * bxfab,
+                                   amrex::FArrayBox const * byfab,
+                                   amrex::FArrayBox const * bzfab,
+                                   const amrex::IntVect ngEB, const int /*e_is_nodal*/,
+                                   const long offset,
+                                   const long np_to_push,
+                                   int lev, int gather_lev, amrex::Real t,
+                                   amrex::Real dt, ScaleFields scaleFields,
+                                   DtType a_dt_type)
 {
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE((gather_lev==(lev-1)) ||
                                      (gather_lev==(lev  )),
                                      "Gather buffers only work for lev-1");
     // If no particles, do not do anything
+    std::cout << "++ np_to_push: " << np_to_push << std::endl; 
     if (np_to_push == 0) return;
 
     // Get cell size on gather_lev
@@ -2798,7 +2819,7 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
 #ifdef WARPX_QED
                               t_chi_max,
 #endif
-                              dt);
+                              dt, t);
         }
 #ifdef WARPX_QED
         else {
@@ -2809,7 +2830,7 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
                                   ion_lev ? ion_lev[ip] : 0,
                                   m, q, pusher_algo, do_crr, do_copy,
                                   t_chi_max,
-                                  dt);
+                                  dt, t);
             }
         }
 #endif
